@@ -54,14 +54,6 @@ LLM access goes through an OpenAI-compatible client pointed at the SSP Cloud LLM
 lab, wrapped with [Langfuse](https://langfuse.com/) for tracing. All prompts ask
 the model to answer with a single JSON object, which is parsed back into a dict.
 
-Annotated Citrus data is the intended ground truth for further development. The
-durable target, rules, evaluation contract, and sequencing are documented in:
-
-- [Project context](docs/PROJECT_CONTEXT.md)
-- [Domain rules](docs/DOMAIN_RULES.md)
-- [Evaluation](docs/EVALUATION.md)
-- [Roadmap](docs/ROADMAP.md)
-
 ## Project structure
 
 ```
