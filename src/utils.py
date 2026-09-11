@@ -7,10 +7,10 @@ def annuaire(siren_siret: str):
 def luhn_checksum(sirene_number):
     sirene_number = str(sirene_number).replace(" ", "")
     # Exception pour La Poste
-    if sirene_number == 356000000:
+    if sirene_number == "356000000":
         return 0
     def digits_of(n):
-        return [int(d) for d in n]
+        return [int(d) for d in str(n)]
     digits = digits_of(sirene_number)
     odd_digits = digits[-1::-2]
     even_digits = digits[-2::-2]

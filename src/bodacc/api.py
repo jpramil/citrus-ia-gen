@@ -1,6 +1,19 @@
-import requests
 import json
+import re
+from typing import Any, Mapping
+
+import requests
+
 from src import logger
+
+
+class BodaccFetchError(RuntimeError):
+    """Observable failure while fetching one exact BODACC announcement."""
+
+    def __init__(self, code: str, detail: str):
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
 
 
 class bodacc_api:
@@ -57,6 +70,151 @@ class bodacc_api:
         annonce_content = self.get_annonce(annonce_id).content
         logger.info("Extracting results from annonce content")
         return json.loads(annonce_content).get("results")[0]
+
+    def fetch_annonce_json(
+        self, annonce_id: str, *, timeout: float = 30.0
+    ) -> dict[str, Any]:
+        """Fetch one exact announcement or raise a categorized failure.
+
+        This evaluation-oriented method intentionally lives alongside the
+        legacy methods so their behavior remains unchanged. Querying two rows
+        makes an unexpected non-unique exact-id result observable.
+        """
+
+        logger.info("Fetching exact BODACC announcement %s", annonce_id)
+        try:
+            response = requests.get(
+                self.url,
+                params={
+                    "where": f'id="{annonce_id}"',
+                    "limit": 2,
+                    "offset": 0,
+                    "timezone": "UTC",
+                    "include_links": "false",
+                    "include_app_metas": "false",
+                },
+                timeout=timeout,
+            )
+        except requests.exceptions.RequestException as error:
+            raise BodaccFetchError(
+                "network_exception", f"BODACC request failed: {error}"
+            ) from error
+
+        if not 200 <= response.status_code < 300:
+            raise BodaccFetchError(
+                "http_error",
+                f"BODACC returned HTTP {response.status_code}",
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise BodaccFetchError(
+                "invalid_json", "BODACC response is not valid JSON"
+            ) from error
+        if not isinstance(payload, Mapping):
+            raise BodaccFetchError(
+                "malformed_payload", "BODACC response must be a JSON object"
+            )
+
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise BodaccFetchError(
+                "malformed_payload", "BODACC response has no results list"
+            )
+        total_count = payload.get("total_count")
+        if not results:
+            raise BodaccFetchError(
+                "zero_results", f"No BODACC result for id {annonce_id}"
+            )
+        if len(results) > 1 or (
+            isinstance(total_count, int) and total_count > 1
+        ):
+            raise BodaccFetchError(
+                "multiple_results",
+                f"Expected one BODACC result for id {annonce_id}, got "
+                f"{total_count if isinstance(total_count, int) else len(results)}",
+            )
+        if len(results) != 1 or not isinstance(results[0], Mapping):
+            raise BodaccFetchError(
+                "malformed_payload", "BODACC result is not a JSON object"
+            )
+        result = dict(results[0])
+        if result.get("id") != annonce_id:
+            raise BodaccFetchError(
+                "malformed_payload",
+                f"BODACC result id does not match requested id {annonce_id}",
+            )
+        return result
+
+    def search_acte_siren_for_year(
+        self,
+        siren: str,
+        campaign_year: int,
+        *,
+        timeout: float = 30.0,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return deterministic source notices mentioning a SIREN in ``acte``."""
+
+        if not isinstance(siren, str) or re.fullmatch(r"\d{9}", siren) is None:
+            raise ValueError("siren must contain exactly 9 digits")
+        if not isinstance(campaign_year, int) or not 1900 <= campaign_year <= 2100:
+            raise ValueError("campaign_year must be between 1900 and 2100")
+        if not isinstance(limit, int) or limit <= 0 or limit > 100:
+            raise ValueError("limit must be between 1 and 100")
+        where = (
+            f'search(acte, "{siren}") '
+            f"and dateparution >= date'{campaign_year}-01-01' "
+            f"and dateparution < date'{campaign_year + 1}-01-01'"
+        )
+        try:
+            response = requests.get(
+                self.url,
+                params={
+                    "where": where,
+                    "limit": limit,
+                    "offset": 0,
+                    "timezone": "UTC",
+                    "include_links": "false",
+                    "include_app_metas": "false",
+                },
+                timeout=timeout,
+            )
+        except requests.exceptions.RequestException as error:
+            raise BodaccFetchError(
+                "network_exception", f"BODACC search failed: {error}"
+            ) from error
+        if not 200 <= response.status_code < 300:
+            raise BodaccFetchError(
+                "http_error",
+                f"BODACC search returned HTTP {response.status_code}",
+            )
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise BodaccFetchError(
+                "invalid_json", "BODACC search response is not valid JSON"
+            ) from error
+        if not isinstance(payload, Mapping) or not isinstance(
+            payload.get("results"), list
+        ):
+            raise BodaccFetchError(
+                "malformed_payload", "BODACC search has no results list"
+            )
+        if payload.get("total_count", 0) > limit:
+            raise BodaccFetchError(
+                "search_result_limit_exceeded",
+                f"BODACC search for {siren}/{campaign_year} exceeds {limit}",
+            )
+        if not all(isinstance(item, Mapping) for item in payload["results"]):
+            raise BodaccFetchError(
+                "malformed_payload", "BODACC search result is not an object"
+            )
+        return sorted(
+            (dict(item) for item in payload["results"]),
+            key=lambda item: str(item.get("id", "")),
+        )
 
 
 def _keep_numero_immat(personnes) -> list:

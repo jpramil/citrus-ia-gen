@@ -6,8 +6,8 @@ Commerciales*).
 
 For each legal announcement, citrus fetches the raw record from the BODACC open
 API, figures out **what kind of restructuring** it describes, and extracts the
-structured fields that matter — in particular the SIREN of the company that
-disappears or is sold and the SIREN of the company that takes it over.
+structured fields that matter — in particular the SIREN of the transferor and
+the SIREN of the beneficiary.
 
 **The repo is still work in progress**. 
 
@@ -16,21 +16,22 @@ Des assistants d'IA ont par ailleurs été utilisés à divers stades du process
 ## What it does
 
 BODACC publishes legal announcements about the life of French companies. citrus
-focuses on restructurings and sorts them into four main categories, because the text
-of the announcement — and therefore the way information must be extracted — is
-formatted differently for each one:
+targets eight canonical restructuring categories:
 
-| Code  | Category                                   | Typical wording in the announcement |
+| Code  | Category                                   | Business meaning / typical signal |
 |-------|--------------------------------------------|-------------------------------------|
 | `VE`  | Vente / cession                            | "acquis par", "achat au prix stipulé", "achat", "cession" |
-| `FU`  | Fusion                                     | "AVIS DE PROJET DE FUSION", "projet commun de fusion", "société absorbée" / "société absorbante" |
-| `TUP` | Transmission universelle de patrimoine     | "transmission universelle de patrimoine" |
-| `LG`  | Location-gérance                           | "location-gérance" / "location gérance" |
+| `FU`  | Fusion                                     | Several companies form a new beneficiary |
+| `AB`  | Absorption                                 | Transfer into an existing beneficiary |
+| `TP`  | Transmission universelle de patrimoine     | Commonly abbreviated TUP |
+| `SP`  | Scission partielle                         | Partial transfer to newly created companies |
+| `AP`  | Apport partiel d'actifs                    | Partial transfer to an existing beneficiary |
+| `ST`  | Scission totale                            | Disappearing transferor split among beneficiaries |
+| `LG`  | Location-gérance                           | Operation without ownership transfer |
 
-More detailled types of restructuring exist and will be dealt with later on. 
-
-`VE` is the default: an announcement that matches none of the other three
-keyword families is treated as a vente.
+Only `VE` currently has a complete POC extraction and evaluation pipeline. The
+other types are targets, not implemented capabilities. Unknown or ambiguous
+announcements must not silently default to `VE`.
 
 ## How it works
 
@@ -39,9 +40,9 @@ The pipeline mixes deterministic parsing with LLM calls:
 1. **Fetch** — `bodacc_api` queries the opendatasoft catalog
    (`annonces-commerciales` dataset) for a given announcement id and returns the
    first result as a Python dict.
-2. **Classify** — `classify_type_operation` gathers the free-text description
-   from wherever it lives in the payload and asks an LLM to return one of the
-   four codes above (work in progress).
+2. **Classify** — planned classification will gather the free-text description
+   from the payload and choose the relevant operation logic. This is work in
+   progress and does not yet implement the target taxonomy.
 3. **Parse** — depending on the type, the matching parser extracts the
    structured fields. Structured/identifier fields (SIREN, raison sociale) are
    read directly from the JSON; free-form fields that vary from one greffe to
@@ -52,6 +53,14 @@ The pipeline mixes deterministic parsing with LLM calls:
 LLM access goes through an OpenAI-compatible client pointed at the SSP Cloud LLM
 lab, wrapped with [Langfuse](https://langfuse.com/) for tracing. All prompts ask
 the model to answer with a single JSON object, which is parsed back into a dict.
+
+Annotated Citrus data is the intended ground truth for further development. The
+durable target, rules, evaluation contract, and sequencing are documented in:
+
+- [Project context](docs/PROJECT_CONTEXT.md)
+- [Domain rules](docs/DOMAIN_RULES.md)
+- [Evaluation](docs/EVALUATION.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Project structure
 
@@ -87,8 +96,8 @@ Main dependencies: `polars`, `boto3`, `openai`, `langfuse`, `requests`,
 ## Installation
 
 ```bash
-git clone https://github.com/InseeFrLab/citrus.git
-cd citrus
+git clone https://github.com/Krrcharles/citrus-ia-perso.git
+cd citrus-ia-perso
 uv sync
 ```
 
@@ -154,10 +163,9 @@ resolved to its public record via `src.utils.annuaire`.
 ## Status
 
 - ✅ Fetching from the BODACC API
-- ⏳ LLM classification of the restructuring type - work in progress
+- ⏳ Classification across the eight-type target taxonomy — work in progress
 - ✅ Full parsing + evaluation pipeline for **ventes**
-- ⏳ Dedicated parsers for **fusion**, **transmission universelle de patrimoine**
-  and **location-gérance** (not yet implemented)
+- ⏳ Parsers for `FU`, `AB`, `TP`, `SP`, `AP`, `ST`, and `LG` (not yet implemented)
 
 ## License
 

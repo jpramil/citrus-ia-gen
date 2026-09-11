@@ -3,6 +3,7 @@
 
 # Data
 data/
+artifacts/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -222,3 +223,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+operations_verifiees.parquet
