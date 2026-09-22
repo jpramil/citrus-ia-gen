@@ -16,14 +16,29 @@ script keeps working if the lab changes its default model:
 import json
 import os
 
-from langfuse.openai import OpenAI
+from openai import OpenAI
 
 DEFAULT_ENDPOINT = "https://llm.lab.sspcloud.fr/api"
 DEFAULT_MODEL = "gemma4-26b-moe"
 
 
+def _client_class() -> type[OpenAI]:
+    """Wrapper Langfuse si les clés sont configurées, client OpenAI sinon.
+
+    Langfuse n'est utilisé que pour le tracing automatique : sans clés il
+    s'initialise, affiche un avertissement puis se désactive. On évite donc
+    l'import (~1 s) et le message quand il n'est pas configuré.
+    """
+
+    if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+        from langfuse.openai import OpenAI as LangfuseOpenAI
+
+        return LangfuseOpenAI
+    return OpenAI
+
+
 def get_client() -> OpenAI:
-    return OpenAI(
+    return _client_class()(
         base_url=os.environ.get("LLM_LAB_ENDPOINT", DEFAULT_ENDPOINT),
         api_key=os.environ.get("LLM_LAB_API_KEY", ""),
         max_retries=5
