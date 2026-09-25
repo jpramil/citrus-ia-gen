@@ -17,7 +17,8 @@ The two halves have different coverage, and are **not yet wired together**:
   fields for the fusion family (`FU`, `AB`, `SP`, `AP`, `ST`).
 - No code path runs router → skill end to end. `oracle_benchmark` selects the skill from the
   *annotated* `type_op`, and the routing benchmarks run classification without extraction; tests
-  assert this separation (e.g. `tests/test_routing.py:416`).
+  assert this separation (e.g.
+  `RoutingTest.test_router_has_no_operation_skill_dependency_or_dispatch` in `tests/test_routing.py`).
 
 Note: `README.md` predates the routing/benchmark layer. It still calls classification
 unimplemented and lists `TP`/`LG` among the missing parsers; both are outdated. `main.py` is the
@@ -38,8 +39,10 @@ injected fakes:
 ```bash
 uv run python -m unittest discover -s tests -t .        # whole suite (~220 tests, seconds)
 uv run python -m unittest tests.test_routing            # one module
-uv run python -m unittest tests.test_routing.RouterTest.test_name   # one test
+uv run python -m unittest tests.test_routing.RoutingTest.test_name  # one test
 ```
+
+No linter, formatter or type checker is configured (none in `pyproject.toml`, no pre-commit).
 
 Benchmarks are the real-data entry points; each takes an annotations CSV/Parquet and an output
 directory, and hits both the BODACC API and the LLM lab:
@@ -57,10 +60,36 @@ The "bourrin" approach — one generic prompt, one LLM call doing routing *and* 
 uv run python bourrin.py                      # interactive session
 uv run python bourrin.py A20230147853         # one-shot
 uv run python bourrin.py A20230147853 --json  # normalized envelope only, for piping
+uv run python bourrin.py A20230147853 --no-annotations  # skip loading annotations (offline, faster)
 ```
 
+By default `bourrin.py` loads annotations from `s3://projet-citrus/data/operations_verifiees.parquet`
+(override with `--annotations`); `--json` also skips that load. `--temperature` is forwarded to
+the LLM. `bourrin.py` has no dedicated unit tests; it is exercised only indirectly through
+`tests/test_explorer_batch.py`.
+
+Batch evaluation of the bourrin approach on annotated operations:
+
+```bash
+uv run python explorer_batch.py                             # 20 random operations
+uv run python explorer_batch.py --types VE LG -n 50         # filter on annotated type_op
+uv run python explorer_batch.py --types FUSION --per-type -n 5   # FUSION = FU AB SP AP ST
+uv run python explorer_batch.py --types TP --all            # no sampling
+uv run python explorer_batch.py --load artifacts/bourrin_batch/<timestamp>  # reopen, no LLM call
+```
+
+It samples annotation *rows* (seeded, stable order), runs `run_bourrin` over a thread pool
+(`--workers`, default 4), appends each record to `artifacts/bourrin_batch/<timestamp>/results.jsonl`
+as it arrives (gitignored; Ctrl-C keeps partial results), then prints metrics and opens a
+`batch>` browsing session (`--no-browse` to skip). Reference rows are stored already normalized
+via `_reference_value` under their annotation column names, so bourrin's `_pair_operations` /
+`format_comparison` work unchanged on reloaded batches. Metrics compare the `reglesMetier`
+reading; field accuracy is computed on predicted/annotated operation pairs only.
+
 `explorer.py` holds the `# %%` cells for driving those functions from a VS Code interactive
-window; nothing at module level in `bourrin.py` runs on import.
+window. Importing `bourrin.py` runs nothing except a REPL convenience: it `chdir`s into
+`citrus-ia-gen/` if launched from the parent directory. `test.py` is a stale scratch script
+(hardcoded `chdir` to a `citrus/` path that no longer exists) — not part of the test suite.
 
 Legacy S3-backed vente evaluation (reads/writes `s3://projet-citrus/...`):
 
@@ -69,6 +98,8 @@ uv run main.py
 ```
 
 Call graph regeneration: `bash docs/graphs.sh` (code2flow → `docs/call_graph_all_but_test.png`).
+Despite the name, the script excludes `./src/test/*`, which does not exist, so `tests/` is
+included in the graph.
 
 ## Configuration
 
@@ -128,7 +159,7 @@ A deliberate counter-experiment to layers 2 and 3: `run_bourrin` sends the raw (
 BODACC payload to a single LLM call with one generic French prompt that asks for the operation
 type *and* every business field at once.
 
-The prompt (`bourrin-single-prompt-v3`) merges two sources: the **business rules** the
+The prompt (`bourrin_prompt.md` at the repo root, read verbatim into `SYSTEM_PROMPT`; version `BOURRIN_PROMPT_VERSION`) merges two sources: the **business rules** the
 operators actually apply — the ordered cascade LG → TP → fusion/scission ≤2 → >2 → VE →
 not retained, the textual anchors for dates and amounts, one operation per secondary SIREN —
 and the **legal definitions** of the eight types. The model returns *two independent readings*

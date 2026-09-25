@@ -19,7 +19,7 @@ import os
 from openai import OpenAI
 
 DEFAULT_ENDPOINT = "https://llm.lab.sspcloud.fr/api"
-DEFAULT_MODEL = "gemma4-26b-moe"
+DEFAULT_MODEL = "qwen3-8-27b"
 
 
 def _client_class() -> type[OpenAI]:
@@ -49,18 +49,28 @@ def get_model_name() -> str:
     return os.environ.get("LLM_MODEL_NAME", DEFAULT_MODEL)
 
 
-def ask(messages: list, client: OpenAI | None = None, **kwargs) -> str:
+def ask(
+    messages: list,
+    client: OpenAI | None = None,
+    reasoning: bool = True,
+    **kwargs,
+) -> str:
     """
     Send a list of chat messages and return the assistant's text answer.
 
     Args:
         messages: list of {"role": ..., "content": ...} dicts.
         client: an optional pre-built OpenAI client (handy for tests / reuse).
+        reasoning: True keeps the model's default behaviour (qwen3 reasons
+            before answering); False sends reasoning_effort="none", which the
+            lab honours for qwen3-8-27b and gemma4-26b-moe.
         kwargs: forwarded to chat.completions.create (e.g. temperature).
 
     Returns:
         the model answer as a string.
     """
+    if not reasoning:
+        kwargs.setdefault("reasoning_effort", "none")
     client = client or get_client()
     response = client.chat.completions.create(
         model=get_model_name(),

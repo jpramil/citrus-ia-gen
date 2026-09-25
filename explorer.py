@@ -31,8 +31,12 @@ pl.Config.set_tbl_cols(-1)
 annotations = load_annotations()
 print(describe_annotations(annotations))
 
+# %% l'annonce étudiée — la changer ici, puis réexécuter les cellules suivantes
+ANNONCE_ID = "A20240102873"
+RAISONNEMENT = True  # False : le modèle répond sans raisonner (plus rapide)
+
 # %% une annonce de bout en bout
-res = run_bourrin("A20230147853")
+res = run_bourrin(ANNONCE_ID, reasoning=RAISONNEMENT)
 print(format_result(res))
 
 # %% la réponse normalisée, et le raccourci de confort
@@ -43,13 +47,13 @@ pprint(res["payload"])
 # %% confronter à la référence annotée
 print(format_comparison(
     res["envelope"][COMPARED_READING]["operations"],
-    annotation_for(annotations, "A20230147853"),
+    annotation_for(annotations, ANNONCE_ID),
 ))
 
 # %% inspecter une annonce sans appeler le LLM
-afficher_annonce("A202302002243")
-annotation_for(annotations, "A202302002243")
-annotations.filter(pl.col("ref_annonce_complet") == "A202302002243")
+afficher_annonce(ANNONCE_ID)
+annotation_for(annotations, ANNONCE_ID)
+annotations.filter(pl.col("ref_annonce_complet") == ANNONCE_ID)
 
 # %% le payload brut
-pprint(bodacc_api().fetch_annonce_json("A202302002243"))
+pprint(bodacc_api().fetch_annonce_json(ANNONCE_ID))
